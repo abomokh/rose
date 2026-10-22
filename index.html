@@ -72,16 +72,28 @@ function beep(f,t=.04,v=.03,type='square'){if(!sOn||!ac||ac.state!=='running')re
 // gentle music-box loop (C - Am - F - G), scheduled ahead
 const MEL=[72,76,79,76,74,76,72,0, 69,72,76,72,71,72,69,0, 65,69,72,69,67,69,72,0, 67,71,74,71,72,74,76,79],BAS=[48,45,41,43];let mStep=0,mNext=0;
 const hz=m=>440*Math.pow(2,(m-69)/12);
-function note(f,at,d,v,type){const o=ac.createOscillator(),g=ac.createGain();o.type=type;o.frequency.value=f;g.gain.setValueAtTime(0,at);g.gain.linearRampToValueAtTime(v,at+.01);g.gain.exponentialRampToValueAtTime(1e-4,at+d);o.connect(g).connect(mg);o.start(at);o.stop(at+d+.05);}
-function sched(){if(!ac||ac.state!=='running'||!sOn)return;const st=.28;if(mNext<ac.currentTime)mNext=ac.currentTime+.05;
+function note(f,at,d,v,type){const o=ac.createOscillator(),g=ac.createGain();o.type=type;o.frequency.value=f;g.gain.setValueAtTime(0,at);g.gain.linearRampToValueAtTime(v,at+.01);g.gain.exponentialRampToValueAtTime(1e-4,at+d);o.connect(g).connect(sg||mg);o.start(at);o.stop(at+d+.05);}
+function sched(){if(!ac||ac.state!=='running'||!sOn)return;songGo();if(synthDone)return;const st=.28;if(mNext<ac.currentTime)mNext=ac.currentTime+.05;
  while(mNext<ac.currentTime+.6){const m=MEL[mStep%32];if(m){note(hz(m),mNext,.9,.035,'triangle');note(hz(m+12),mNext,.4,.006,'sine');}
   if(mStep%8==0)note(hz(BAS[(mStep>>3)%4]),mNext,st*7,.03,'sine');mStep++;mNext+=st;}}
 
+
+// Suno song: fetched on load, decoded once the AudioContext exists, plays looped through mg; synth music box crossfades out
+let sg=null,songAB=null,songBuf=null,songSrc=null,songG=null,decoding=false,synthDone=false;
+fetch('song.mp3').then(r=>r.ok?r.arrayBuffer():null).then(b=>{songAB=b;decSong();}).catch(()=>{});
+function decSong(){if(!ac||!songAB||decoding||songBuf)return;decoding=true;const ab=songAB;
+ const ok=b=>{songBuf=b;songAB=null;songGo();},bad=()=>{decoding=false;};
+ try{const pr=ac.decodeAudioData(ab,ok,bad);if(pr&&pr.catch)pr.catch(()=>{});}catch(e){bad();}}
+function songGo(){if(songSrc||!songBuf||!ac||ac.state!=='running'||!sOn)return;const t=ac.currentTime;
+ songG=ac.createGain();songG.gain.setValueAtTime(0,t);songG.gain.linearRampToValueAtTime(.9,t+2.5);songG.connect(mg);
+ songSrc=ac.createBufferSource();songSrc.buffer=songBuf;songSrc.loop=true;songSrc.connect(songG);songSrc.start(t);window.__songStarted=true;window.__songDur=songBuf.duration;
+ sg.gain.cancelScheduledValues(t);sg.gain.setValueAtTime(sg.gain.value,t);sg.gain.linearRampToValueAtTime(.35,t+1.5);sg.gain.linearRampToValueAtTime(0,t+5);
+ setTimeout(()=>{synthDone=true;},5200);}
 function setUI(){unlocked=!!ac&&ac.state==='running';snd.classList.toggle('tap',!unlocked);
  if(!unlocked){snd.textContent='♪ TAP ▶';snd.classList.remove('off');snd.setAttribute('aria-label','tap to start music');}
  else{snd.textContent=sOn?'♪ ON':'♪ OFF';snd.classList.toggle('off',!sOn);snd.setAttribute('aria-label','toggle music');}
  hint.classList.add('gone');}
-function ens(){if(ac)return;try{ac=new(window.AudioContext||window.webkitAudioContext)();mg=ac.createGain();mg.gain.value=1;mg.connect(ac.destination);ac.addEventListener('statechange',()=>{setUI();if(ac.state==='running')sched();});}catch(e){}}
+function ens(){if(ac)return;try{ac=new(window.AudioContext||window.webkitAudioContext)();mg=ac.createGain();mg.gain.value=1;mg.connect(ac.destination);sg=ac.createGain();sg.gain.value=1;sg.connect(mg);decSong();ac.addEventListener('statechange',()=>{setUI();if(ac.state==='running')sched();});}catch(e){}}
 function tryStart(){ens();if(!ac)return;if(ac.state!=='running')ac.resume().then(()=>{setUI();sched();}).catch(()=>{});if(mg)mg.gain.setTargetAtTime(sOn?1:0,ac.currentTime,.02);setUI();}
 let started=false,eatClick=false;
 let firstGesture=true,skipT=false;
