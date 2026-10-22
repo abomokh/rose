@@ -10,8 +10,10 @@ canvas{display:block;width:100vw;height:100vh;height:100dvh;image-rendering:pixe
 #hint{position:fixed;right:max(12px,env(safe-area-inset-right));top:calc(max(12px,env(safe-area-inset-top)) + 72px);font:14px monospace;color:#ff8fb1;z-index:3;pointer-events:none;animation:pulse 1.4s ease-in-out infinite}
 #hint.gone{display:none}
 @keyframes pulse{50%{opacity:.25}}
+#snd.tap{color:#fff4a8;background:#2a1a00;border-color:#ffd23f;box-shadow:0 0 0 4px #000,0 0 18px 4px #ffd23faa,inset -4px -4px 0 #6a4a00;animation:tapP .9s ease-in-out infinite}
+@keyframes tapP{50%{transform:scale(1.07);box-shadow:0 0 0 4px #000,0 0 32px 10px #ffd23fdd,inset -4px -4px 0 #6a4a00}}
 </style></head><body>
-<canvas id="c"></canvas><div id="snd" role="button" aria-label="toggle music">♪ ON</div><div id="hint">tap for sound ♪</div>
+<canvas id="c"></canvas><div id="snd" role="button" aria-label="toggle music" class="tap">♪ TAP ▶</div><div id="hint" class="gone">tap for sound ♪</div>
 <script>
 (()=>{
 const cv=document.getElementById('c'),x=cv.getContext('2d');let W,H,D,B,ox,oy;
@@ -63,7 +65,6 @@ const CODE=[
 const SWEET=["Out of all the code I've written,","you are my favorite thing to run."];
 // ---- sound (tap to enable) ----
 let ac=null,mg=null,sOn=true,unlocked=false;const snd=document.getElementById('snd'),hint=document.getElementById('hint');
-function ens(){if(ac)return;try{ac=new(window.AudioContext||window.webkitAudioContext)();mg=ac.createGain();mg.gain.value=1;mg.connect(ac.destination);}catch(e){}}
 function beep(f,t=.04,v=.03,type='square'){if(!sOn||!ac||ac.state!=='running')return;const o=ac.createOscillator(),g=ac.createGain();o.type=type;o.frequency.value=f;g.gain.setValueAtTime(v,ac.currentTime);g.gain.exponentialRampToValueAtTime(1e-4,ac.currentTime+t);o.connect(g).connect(mg);o.start();o.stop(ac.currentTime+t+.02);}
 // gentle music-box loop (C - Am - F - G), scheduled ahead
 const MEL=[72,76,79,76,74,76,72,0, 69,72,76,72,71,72,69,0, 65,69,72,69,67,69,72,0, 67,71,74,71,72,74,76,79],BAS=[48,45,41,43];let mStep=0,mNext=0;
@@ -73,14 +74,20 @@ function sched(){if(!ac||ac.state!=='running'||!sOn)return;const st=.28;if(mNext
  while(mNext<ac.currentTime+.6){const m=MEL[mStep%32];if(m){note(hz(m),mNext,.9,.035,'triangle');note(hz(m+12),mNext,.4,.006,'sine');}
   if(mStep%8==0)note(hz(BAS[(mStep>>3)%4]),mNext,st*7,.03,'sine');mStep++;mNext+=st;}}
 setInterval(sched,100);
-function setUI(){snd.textContent=sOn?'♪ ON':'♪ OFF';snd.classList.toggle('off',!sOn);hint.classList.toggle('gone',!sOn||unlocked);}
-function tryStart(){ens();if(!ac)return;if(ac.state==='suspended')ac.resume().then(()=>{unlocked=ac.state==='running';setUI();sched();}).catch(()=>{});unlocked=ac.state==='running';if(mg)mg.gain.setTargetAtTime(sOn?1:0,ac.currentTime,.02);setUI();}
+function setUI(){unlocked=!!ac&&ac.state==='running';snd.classList.toggle('tap',!unlocked);
+ if(!unlocked){snd.textContent='♪ TAP ▶';snd.classList.remove('off');snd.setAttribute('aria-label','tap to start music');}
+ else{snd.textContent=sOn?'♪ ON':'♪ OFF';snd.classList.toggle('off',!sOn);snd.setAttribute('aria-label','toggle music');}
+ hint.classList.add('gone');}
+function ens(){if(ac)return;try{ac=new(window.AudioContext||window.webkitAudioContext)();mg=ac.createGain();mg.gain.value=1;mg.connect(ac.destination);ac.addEventListener('statechange',()=>{setUI();if(ac.state==='running')sched();});}catch(e){}}
+function tryStart(){ens();if(!ac)return;if(ac.state!=='running')ac.resume().then(()=>{setUI();sched();}).catch(()=>{});if(mg)mg.gain.setTargetAtTime(sOn?1:0,ac.currentTime,.02);setUI();}
 tryStart();
-let firstGesture=!unlocked,skipT=false;
-function unlock(e){if(!firstGesture)return;firstGesture=false;if(e&&e.target!==snd){e.stopImmediatePropagation();}else skipT=true;tryStart();}
+let firstGesture=true,skipT=false;
+function unlock(e){if(ac&&ac.state==='running'){firstGesture=false;return;}
+ if(e&&e.target===snd)skipT=true;else if(firstGesture&&e)e.stopImmediatePropagation();
+ if(e.type!=='keydown')firstGesture=false;tryStart();}
 ['pointerdown','touchstart','keydown','click'].forEach(ev=>window.addEventListener(ev,unlock,{capture:true}));
 snd.addEventListener('pointerdown',e=>e.stopPropagation());
-snd.onclick=e=>{e.stopPropagation();if(skipT){skipT=false;tryStart();return;}sOn=!sOn;tryStart();};
+snd.onclick=e=>{e.stopPropagation();if(skipT||!unlocked){skipT=false;tryStart();return;}sOn=!sOn;tryStart();};
 setUI();
 // ---- timeline ----
 let t0=performance.now(),parts=[],lastChar=-1,lastBlocks=0,chime=false;
