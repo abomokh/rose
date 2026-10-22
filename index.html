@@ -12,8 +12,11 @@ canvas{display:block;width:100vw;height:100vh;height:100dvh;image-rendering:pixe
 @keyframes pulse{50%{opacity:.25}}
 #snd.tap{color:#fff4a8;background:#2a1a00;border-color:#ffd23f;box-shadow:0 0 0 4px #000,0 0 18px 4px #ffd23faa,inset -4px -4px 0 #6a4a00;animation:tapP .9s ease-in-out infinite}
 @keyframes tapP{50%{transform:scale(1.07);box-shadow:0 0 0 4px #000,0 0 32px 10px #ffd23fdd,inset -4px -4px 0 #6a4a00}}
-</style></head><body>
-<canvas id="c"></canvas><div id="snd" role="button" aria-label="toggle music" class="tap">♪ TAP ▶</div><div id="hint" class="gone">tap for sound ♪</div>
+#snd{transition:right .9s cubic-bezier(.6,0,.2,1),top .9s cubic-bezier(.6,0,.2,1),min-width .9s,min-height .9s,font-size .9s}
+#snd.intro{right:calc(50% - 100px);top:calc(50% - 44px);min-width:200px;min-height:88px;font-size:30px}
+body.pre canvas{visibility:hidden}
+</style></head><body class="pre">
+<canvas id="c"></canvas><div id="snd" role="button" aria-label="toggle music" class="tap intro">♪ TAP ▶</div><div id="hint" class="gone">tap for sound ♪</div>
 <script>
 (()=>{
 const cv=document.getElementById('c'),x=cv.getContext('2d');let W,H,D,B,ox,oy;
@@ -73,16 +76,18 @@ function note(f,at,d,v,type){const o=ac.createOscillator(),g=ac.createGain();o.t
 function sched(){if(!ac||ac.state!=='running'||!sOn)return;const st=.28;if(mNext<ac.currentTime)mNext=ac.currentTime+.05;
  while(mNext<ac.currentTime+.6){const m=MEL[mStep%32];if(m){note(hz(m),mNext,.9,.035,'triangle');note(hz(m+12),mNext,.4,.006,'sine');}
   if(mStep%8==0)note(hz(BAS[(mStep>>3)%4]),mNext,st*7,.03,'sine');mStep++;mNext+=st;}}
-setInterval(sched,100);
+
 function setUI(){unlocked=!!ac&&ac.state==='running';snd.classList.toggle('tap',!unlocked);
  if(!unlocked){snd.textContent='♪ TAP ▶';snd.classList.remove('off');snd.setAttribute('aria-label','tap to start music');}
  else{snd.textContent=sOn?'♪ ON':'♪ OFF';snd.classList.toggle('off',!sOn);snd.setAttribute('aria-label','toggle music');}
  hint.classList.add('gone');}
 function ens(){if(ac)return;try{ac=new(window.AudioContext||window.webkitAudioContext)();mg=ac.createGain();mg.gain.value=1;mg.connect(ac.destination);ac.addEventListener('statechange',()=>{setUI();if(ac.state==='running')sched();});}catch(e){}}
 function tryStart(){ens();if(!ac)return;if(ac.state!=='running')ac.resume().then(()=>{setUI();sched();}).catch(()=>{});if(mg)mg.gain.setTargetAtTime(sOn?1:0,ac.currentTime,.02);setUI();}
-tryStart();
+let started=false,eatClick=false;
 let firstGesture=true,skipT=false;
-function unlock(e){if(ac&&ac.state==='running'){firstGesture=false;return;}
+function unlock(e){if(!started){e.stopImmediatePropagation();if(e.type==='click'){eatClick=false;}begin(e);return;}
+ if(eatClick&&e.type==='click'){eatClick=false;skipT=false;e.stopImmediatePropagation();return;}
+ if(ac&&ac.state==='running'){firstGesture=false;return;}
  if(e&&e.target===snd)skipT=true;else if(firstGesture&&e)e.stopImmediatePropagation();
  if(e.type!=='keydown')firstGesture=false;tryStart();}
 ['pointerdown','touchstart','keydown','click'].forEach(ev=>window.addEventListener(ev,unlock,{capture:true}));
@@ -90,9 +95,11 @@ snd.addEventListener('pointerdown',e=>e.stopPropagation());
 snd.onclick=e=>{e.stopPropagation();if(skipT||!unlocked){skipT=false;tryStart();return;}sOn=!sOn;tryStart();};
 setUI();
 // ---- timeline ----
-let t0=performance.now(),parts=[],lastChar=-1,lastBlocks=0,chime=false;
+function begin(e){started=true;firstGesture=false;eatClick=e.type!=='click'&&e.type!=='keydown';tryStart();setInterval(sched,100);
+ document.body.classList.remove('pre');snd.classList.remove('intro');t0=performance.now();requestAnimationFrame(frame);}
+let t0=0,parts=[],lastChar=-1,lastBlocks=0,chime=false;
 const T_TERM=0,T_TYPE_END=7.2,T_STEM=7.8,T_STEM_END=10.6,T_LEAF_END=11.8,T_BLOOM=12.2,T_BLOOM_END=15.4,T_TEXT=15.8;
-cv.addEventListener('pointerdown',()=>{t0=performance.now();parts=[];lastChar=-1;lastBlocks=0;chime=false;});
+cv.addEventListener('pointerdown',()=>{if(!started)return;t0=performance.now();parts=[];lastChar=-1;lastBlocks=0;chime=false;});
 const totalChars=CODE.reduce((s,l)=>s+l[0].length+l[1].length,0);
 function blk(i,j,c,s=1,a=1){const sz=B*s,px=ox+i*B+(B-sz)/2,py=oy+j*B+(B-sz)/2;x.globalAlpha=a;x.fillStyle=c;x.fillRect(px|0,py|0,Math.ceil(sz),Math.ceil(sz));
  if(s>.6&&B>5){x.fillStyle='rgba(255,255,255,.13)';x.fillRect(px|0,py|0,Math.ceil(sz),Math.max(1,sz/6|0));x.fillStyle='rgba(0,0,0,.22)';x.fillRect(px|0,(py+sz-Math.max(1,sz/6|0))|0,Math.ceil(sz),Math.max(1,sz/6|0));}x.globalAlpha=1;}
@@ -143,6 +150,5 @@ function frame(now){const t=(now-t0)/1000;x.fillStyle='#000';x.fillRect(0,0,cv.w
   x.globalAlpha=a*.55*(0.6+0.4*Math.sin(t*2));x.font=`${fs*.6}px ui-monospace,monospace`;x.fillStyle='#3f6';x.fillText(t>T_TEXT+3?'// tap to replay ♥':'',W*D/2,H*D-fs*1.3);x.globalAlpha=1;x.textAlign='left';}
  requestAnimationFrame(frame);}
 function spark(i,j,burst){const a=Math.random()*6.28,v=(burst?1.5+Math.random()*3:.5)*D;parts.push({x:ox+(i+.5)*B,y:oy+(j+.5)*B,vx:Math.cos(a)*v/D,vy:Math.sin(a)*v,g:.02*D,life:1,h:burst&&Math.random()<.5,c:['#ff5a72','#fff','#ffd0da'][Math.random()*3|0]});}
-requestAnimationFrame(frame);
 })();
 </script></body></html>
