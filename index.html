@@ -90,6 +90,9 @@ function unlock(e){if(!started){e.stopImmediatePropagation();if(e.type==='click'
  if(ac&&ac.state==='running'){firstGesture=false;return;}
  if(e&&e.target===snd)skipT=true;else if(firstGesture&&e)e.stopImmediatePropagation();
  if(e.type!=='keydown')firstGesture=false;tryStart();}
+function kick(){if(!started)return;ens();if(!ac||ac.state==='running')return;try{const b=ac.createBuffer(1,1,22050),n=ac.createBufferSource();n.buffer=b;n.connect(ac.destination);n.start(0);}catch(e){}ac.resume().then(()=>{setUI();sched();}).catch(()=>{});}
+['touchend','pointerup','click'].forEach(ev=>window.addEventListener(ev,kick,{capture:true}));
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&ac&&ac.state!=='running'&&started)ac.resume().catch(()=>{});});
 ['pointerdown','touchstart','keydown','click'].forEach(ev=>window.addEventListener(ev,unlock,{capture:true}));
 snd.addEventListener('pointerdown',e=>e.stopPropagation());
 snd.onclick=e=>{e.stopPropagation();if(skipT||!unlocked){skipT=false;tryStart();return;}sOn=!sOn;tryStart();};
